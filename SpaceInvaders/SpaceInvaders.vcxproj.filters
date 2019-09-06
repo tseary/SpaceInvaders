@@ -16,6 +16,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="SpaceInvaders.ino" />
+    <None Include="Display.ino" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="__vm\.SpaceInvaders.vsarduino.h">
