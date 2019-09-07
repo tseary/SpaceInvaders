@@ -4,7 +4,7 @@ void printDisplay() {
 		for (uint8_t x = SCREEN_WIDTH - 1; x < SCREEN_WIDTH; x--) {
 			char c = field[x][y];
 			Serial.print(' ');
-			Serial.print(c ? c : ' ');
+			Serial.print(c ? c : '.');
 		}
 		Serial.println();
 	}

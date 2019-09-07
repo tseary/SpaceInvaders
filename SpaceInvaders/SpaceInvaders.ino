@@ -80,18 +80,36 @@ void setup() {
 }
 
 void loop() {
-	// Move monsters
-	if (!moveDown) {
-		moveDown = !(moveLeft ? tryShiftAliensLeft() : tryShiftAliensRight());
-	}
-	if (moveDown) {
-		shiftMonstersDown();
-		moveDown = false;
-		moveLeft = !moveLeft;
-	}
 
-	printDisplay();
-	delay(1000);
+	newGame();
+
+	uint32_t moveAliensPeriod = 1000;
+	uint32_t moveAliensTime = millis() + moveAliensPeriod;
+
+	while (true) {
+		updateControls();
+
+		if () {
+
+		}
+
+		if (millis() >= moveAliensTime) {
+			// Move aliens
+			if (!moveDown) {
+				moveDown = !(moveLeft ? tryShiftAliensLeft() : tryShiftAliensRight());
+			}
+			if (moveDown) {
+				shiftMonstersDown();
+				moveDown = false;
+				moveLeft = !moveLeft;
+			}
+
+			moveAliensTime += moveAliensPeriod;
+		}
+
+		printDisplay();
+		delay(1000);
+	}
 }
 
 void newGame() {
@@ -124,9 +142,9 @@ bool tryShiftAliensLeft() {
 		}
 	}
 	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
-		for (uint8_t x = 1; x < SCREEN_WIDTH; x++) {
+		for (uint8_t x = SCREEN_WIDTH - 2; x < SCREEN_WIDTH; x--) {
 			if (isAlien(x, y)) {
-				field[x - 1][y] = field[x][y];
+				field[x + 1][y] = field[x][y];
 				field[x][y] = '\0';
 			}
 		}
@@ -141,9 +159,9 @@ bool tryShiftAliensRight() {
 		}
 	}
 	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
-		for (uint8_t x = SCREEN_WIDTH - 2; x < SCREEN_WIDTH; x--) {
+		for (uint8_t x = 1; x < SCREEN_WIDTH; x++) {
 			if (isAlien(x, y)) {
-				field[x + 1][y] = field[x][y];
+				field[x - 1][y] = field[x][y];
 				field[x][y] = '\0';
 			}
 		}
@@ -167,8 +185,8 @@ bool isSpaceship(uint8_t x, uint8_t y) {
 }
 
 bool isAlien(uint8_t x, uint8_t y) {
-	if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT) return false;
-	return (field[x][y] - F_ALIEN_0) < TOTAL_ALIENS;
+	return x < SCREEN_WIDTH && y < SCREEN_HEIGHT &&
+		(uint8_t)(field[x][y] - F_ALIEN_0) < TOTAL_ALIENS;
 }
 
 bool isPlayer(uint8_t x, uint8_t y) {
