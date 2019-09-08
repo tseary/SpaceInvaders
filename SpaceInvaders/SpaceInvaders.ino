@@ -5,11 +5,12 @@
 */
 
 const uint8_t
-SCREEN_WIDTH = 16,
-SCREEN_HEIGHT = 16,
-PLAYER_HEIGHT = 2,
-SPACESHIP_HEIGHT = 1,
-SHIP_OFFSET = SCREEN_HEIGHT - SPACESHIP_HEIGHT;
+SCREEN_W = 16,
+SCREEN_H = 16,
+PLAYER_W2 = 1,
+PLAYER_H = 2,
+SPACESHIP_H = 1,
+SHIP_OFFSET = SCREEN_H - SPACESHIP_H;
 
 const uint8_t
 ALIEN_ROWS = 3,
@@ -23,7 +24,13 @@ TOTAL_ALIENS = ALIEN_ROWS * ALIEN_COLS;
 // The position of the lower-right alien on the field.
 uint8_t xGridOrigin, yGridOrigin;
 
-char field[SCREEN_WIDTH][SCREEN_HEIGHT];
+// The position of the player
+uint8_t xPlayer;
+
+// THe position of the (one and only) bullet
+uint8_t xShot, yShot;
+
+char field[SCREEN_W][SCREEN_H];
 
 // Field symbols
 const char
@@ -65,62 +72,93 @@ void setup() {
 	while (!Serial);
 	delay(500);
 	Serial.println("Space Invaders");
-
-	newGame();
-
-	// DEBUG
-	uint8_t xPlayer = 11,
-		yPlayer = 0;
-	field[xPlayer][yPlayer] = F_PLAYER;
-	field[xPlayer + 1][yPlayer] = F_PLAYER;
-	field[xPlayer - 1][yPlayer] = F_PLAYER;
-	field[xPlayer][yPlayer + 1] = F_PLAYER;
-
-	printDisplay();
 }
 
 void loop() {
 
 	newGame();
+	printDisplay();
 
-	uint32_t moveAliensPeriod = 1000;
-	uint32_t moveAliensTime = millis() + moveAliensPeriod;
+	const uint32_t moveAliensPeriodPer = 80;
+	uint32_t moveAliensPeriod = TOTAL_ALIENS * moveAliensPeriodPer,
+		moveAliensTime = millis() + moveAliensPeriod;
+	uint32_t moveShotPeriod = 250,
+		moveShotTime;
+
+	uint8_t liveAliens = TOTAL_ALIENS;
 
 	while (true) {
-		updateControls();
+		bool draw = false;
 
-		if () {
+		updateControl();
 
+		// Move player
+		if (isLClick()) {
+			Serial.println("left");
+			tryMovePlayerLeft();
+			draw = true;
+		}
+		if (isRClick()) {
+			Serial.println("right");
+			tryMovePlayerRight();
+			draw = true;
+		}
+		if (isDClick()) {
+			Serial.println("pew!");
+			shoot();
+			moveShotTime = millis() + moveShotPeriod;
+			draw = true;
 		}
 
+		// Move player shot
+		if (isShotActive() && millis() >= moveShotTime) {
+			moveShotUp();
+			moveShotTime += moveShotPeriod;
+			draw = true;
+		}
+
+		// Move aliens
 		if (millis() >= moveAliensTime) {
-			// Move aliens
 			if (!moveDown) {
 				moveDown = !(moveLeft ? tryShiftAliensLeft() : tryShiftAliensRight());
 			}
 			if (moveDown) {
-				shiftMonstersDown();
+				moveAliensDown();
 				moveDown = false;
 				moveLeft = !moveLeft;
 			}
 
 			moveAliensTime += moveAliensPeriod;
+			draw = true;
 		}
 
-		printDisplay();
-		delay(1000);
+		// Check collisions
+		if (isAlien(xShot, yShot)) {
+			// The shot hit an alien
+			liveAliens--;
+			moveAliensPeriod -= moveAliensPeriodPer;
+			clearShot();
+		}
+
+		if (draw) {
+			printDisplay();
+		}
 	}
 }
 
 void newGame() {
 	// Reset the aliens
 	// Start with the grid of aliens touching the left side of the field...
-	xGridOrigin = SCREEN_WIDTH - ((ALIEN_COLS - 1) * ALIEN_PITCH_X + ALIEN_W);
+	xGridOrigin = SCREEN_W - ((ALIEN_COLS - 1) * ALIEN_PITCH_X + ALIEN_W);
 	// ..and as close as possible to the top of the screen, leaving space for spaceships.
-	yGridOrigin = SCREEN_HEIGHT - ((ALIEN_ROWS - 1) * ALIEN_PITCH_Y + ALIEN_H) - SPACESHIP_HEIGHT;
+	yGridOrigin = SCREEN_H - ((ALIEN_ROWS - 1) * ALIEN_PITCH_Y + ALIEN_H) - SPACESHIP_H;
 
 	// Clear the field
-	memset(field, '\0', SCREEN_WIDTH * SCREEN_HEIGHT);
+	memset(field, '\0', SCREEN_W * SCREEN_H);
+
+	// Reset the player
+	xPlayer = SCREEN_W / 2;
+	clearShot();
 
 	// Draw the aliens
 	for (uint8_t i = 0; i < ALIEN_COLS; i++) {
@@ -135,14 +173,32 @@ void newGame() {
 	}
 }
 
+void shoot() {
+	xShot = xPlayer;
+	yShot = PLAYER_H;
+}
+
+void clearShot() {
+	xShot = SCREEN_W;
+	yShot = PLAYER_H;
+}
+
+bool isShotActive() {
+	return xShot < SCREEN_W;
+}
+
+bool moveShotUp() {
+	yShot++;
+}
+
 bool tryShiftAliensLeft() {
-	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
-		if (isAlien(SCREEN_WIDTH - 1, y)) {
+	for (uint8_t y = 0; y < SCREEN_H; y++) {
+		if (isAlien(SCREEN_W - 1, y)) {
 			return false;
 		}
 	}
-	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
-		for (uint8_t x = SCREEN_WIDTH - 2; x < SCREEN_WIDTH; x--) {
+	for (uint8_t y = 0; y < SCREEN_H; y++) {
+		for (uint8_t x = SCREEN_W - 2; x < SCREEN_W; x--) {
 			if (isAlien(x, y)) {
 				field[x + 1][y] = field[x][y];
 				field[x][y] = '\0';
@@ -153,13 +209,13 @@ bool tryShiftAliensLeft() {
 }
 
 bool tryShiftAliensRight() {
-	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
+	for (uint8_t y = 0; y < SCREEN_H; y++) {
 		if (isAlien(0, y)) {
 			return false;
 		}
 	}
-	for (uint8_t y = 0; y < SCREEN_HEIGHT; y++) {
-		for (uint8_t x = 1; x < SCREEN_WIDTH; x++) {
+	for (uint8_t y = 0; y < SCREEN_H; y++) {
+		for (uint8_t x = 1; x < SCREEN_W; x++) {
 			if (isAlien(x, y)) {
 				field[x - 1][y] = field[x][y];
 				field[x][y] = '\0';
@@ -169,15 +225,31 @@ bool tryShiftAliensRight() {
 	return true;
 }
 
-void shiftMonstersDown() {
-	for (uint8_t y = 1; y < SCREEN_HEIGHT; y++) {
-		for (uint8_t x = 0; x < SCREEN_WIDTH; x++) {
+void moveAliensDown() {
+	for (uint8_t y = 0; y < SCREEN_H - 1; y++) {
+		for (uint8_t x = 0; x < SCREEN_W; x++) {
 			if (isAlien(x, y)) {
-				field[x][y - 1] = field[x][y];
+				if (y > 0) field[x][y - 1] = field[x][y];
 				field[x][y] = '\0';
 			}
 		}
 	}
+}
+
+bool tryMovePlayerLeft() {
+	if (xPlayer < (SCREEN_W - 1 - PLAYER_W2)) {
+		xPlayer++;
+		return true;
+	}
+	return false;
+}
+
+bool tryMovePlayerRight() {
+	if (xPlayer > PLAYER_W2) {
+		xPlayer--;
+		return true;
+	}
+	return false;
 }
 
 bool isSpaceship(uint8_t x, uint8_t y) {
@@ -185,7 +257,7 @@ bool isSpaceship(uint8_t x, uint8_t y) {
 }
 
 bool isAlien(uint8_t x, uint8_t y) {
-	return x < SCREEN_WIDTH && y < SCREEN_HEIGHT &&
+	return x < SCREEN_W && y < SCREEN_H &&
 		(uint8_t)(field[x][y] - F_ALIEN_0) < TOTAL_ALIENS;
 }
 

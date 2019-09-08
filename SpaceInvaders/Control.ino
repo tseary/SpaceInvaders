@@ -51,11 +51,19 @@ void updateControl() {
 	wasDPressed = isDPressed;
 	wasEPressed = isEPressed;
 
+	// DEBUG analog nav switch
+	uint16_t value = analogRead(A0);
+	value >>= 7;
+	isLPressed = value == 3;
+	isRPressed = value == 4;
+	isDPressed = value == 6;
+	isEPressed = value == 0;
+
 	// Read buttons
-	isLPressed = !digitalRead(L_BUTTON_PIN);
+	/*isLPressed = !digitalRead(L_BUTTON_PIN);
 	isRPressed = !digitalRead(R_BUTTON_PIN);
 	isDPressed = !digitalRead(D_BUTTON_PIN);
-	isEPressed = !digitalRead(E_BUTTON_PIN);
+	isEPressed = !digitalRead(E_BUTTON_PIN);*/
 }
 
 bool isLClick() {
