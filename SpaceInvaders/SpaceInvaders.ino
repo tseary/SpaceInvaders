@@ -4,6 +4,8 @@
 	Author:     SCROLLSAW\Thomas
 */
 
+#include <Max72xxPanelBleh.h>
+
 const uint8_t
 SCREEN_W = 16,
 SCREEN_H = 16,
@@ -24,20 +26,26 @@ TOTAL_ALIENS = ALIEN_ROWS * ALIEN_COLS;
 // The position of the lower-right alien on the field.
 uint8_t xGridOrigin, yGridOrigin;
 
+// Player
+uint8_t playerLives = 3;
 // The position of the player
 uint8_t xPlayer;
 
-// THe position of the (one and only) bullet
+// The position of the (one and only) bullet
 uint8_t xShot, yShot;
 
 char field[SCREEN_W][SCREEN_H];
 
+// Alien movement
+uint32_t moveAliensPeriodPer;
+
 // Field symbols
 const char
+F_EMPTY = '\0',
 F_PLAYER = '@',
 F_PLAYER_BULLET = '^',
 F_ALIEN_BULLET = 'v',
-F_SPACSHIP = '$',
+F_SPACESHIP = '$',
 F_SHIELD = '#',
 F_ALIEN_0 = 'A';
 
@@ -72,78 +80,112 @@ void setup() {
 	while (!Serial);
 	delay(500);
 	Serial.println("Space Invaders");
+
+	setupDisplay();
 }
 
 void loop() {
 
-	newGame();
-	printDisplay();
+	do {
+		newGame();
 
-	const uint32_t moveAliensPeriodPer = 80;
-	uint32_t moveAliensPeriod = TOTAL_ALIENS * moveAliensPeriodPer,
-		moveAliensTime = millis() + moveAliensPeriod;
-	uint32_t moveShotPeriod = 250,
-		moveShotTime;
+		printDisplay();
+		drawDisplay();
 
-	uint8_t liveAliens = TOTAL_ALIENS;
+		uint32_t moveAliensPeriod = TOTAL_ALIENS * moveAliensPeriodPer,
+			moveAliensTime = millis() + moveAliensPeriod;
+		uint32_t moveShotPeriod = 200,
+			moveShotTime;
 
-	while (true) {
-		bool draw = false;
+		uint8_t liveAliens = TOTAL_ALIENS;
 
-		updateControl();
+		bool roundWin = false,
+			roundLose = false;
 
-		// Move player
-		if (isLClick()) {
-			Serial.println("left");
-			tryMovePlayerLeft();
-			draw = true;
-		}
-		if (isRClick()) {
-			Serial.println("right");
-			tryMovePlayerRight();
-			draw = true;
-		}
-		if (isDClick()) {
-			Serial.println("pew!");
-			shoot();
-			moveShotTime = millis() + moveShotPeriod;
-			draw = true;
-		}
+		do {
+			// TODO
+			//newRound();
 
-		// Move player shot
-		if (isShotActive() && millis() >= moveShotTime) {
-			moveShotUp();
-			moveShotTime += moveShotPeriod;
-			draw = true;
-		}
+			bool draw = false;
 
-		// Move aliens
-		if (millis() >= moveAliensTime) {
-			if (!moveDown) {
-				moveDown = !(moveLeft ? tryShiftAliensLeft() : tryShiftAliensRight());
+			updateControl();
+
+			// Move player
+			if (isLClick()) {
+				tryMovePlayerLeft();
+				draw = true;
 			}
-			if (moveDown) {
-				moveAliensDown();
-				moveDown = false;
-				moveLeft = !moveLeft;
+			if (isRClick()) {
+				tryMovePlayerRight();
+				draw = true;
+			}
+			if (isDClick() && isShotReady()) {
+				shoot();
+				moveShotTime = millis() + moveShotPeriod;
+				draw = true;
 			}
 
-			moveAliensTime += moveAliensPeriod;
-			draw = true;
+			// Move player shot
+			if (isShotActive() && millis() >= moveShotTime) {
+				moveShotUp();
+				moveShotTime += moveShotPeriod;
+				draw = true;
+			}
+
+			// Move aliens
+			if (millis() >= moveAliensTime) {
+				if (!moveDown) {
+					moveDown = !(moveLeft ? tryMoveAliensLeft() : tryMoveAliensRight());
+				}
+				if (moveDown) {
+					// Lose if the aliens reach the bottom
+					roundLose = !tryMoveAliensDown();
+					moveDown = false;
+					moveLeft = !moveLeft;
+				}
+
+				moveAliensTime += moveAliensPeriod;
+				draw = true;
+			}
+
+			// Check collisions
+			if (isAlien(xShot, yShot)) {
+				// The shot hit an alien
+				removeAlien(xShot, yShot);
+
+				liveAliens--;
+				moveAliensPeriod -= moveAliensPeriodPer;
+				clearShot();
+
+				// Win if all aliens are dead
+				roundWin = !liveAliens;
+			}
+			if (isAlien(xPlayer - 1, 0) || isAlien(xPlayer, 0) ||
+				isAlien(xPlayer + 1, 0) || isAlien(xPlayer, 1)) {
+				// Alien is touching player
+				roundLose = true;
+			}
+
+			if (draw) {
+				printDisplay();
+				drawDisplay();
+			}
+
+		} while (!roundWin && !roundLose);
+
+		// Speed up after each round
+		if (roundWin) {
+			moveAliensPeriodPer *= 0.8;
+		} else if (roundLose) {
+			// TODO Reset the aliens position, but don't replace the ones already killed
+
+			// Lose a life
+			playerLives--;
 		}
 
-		// Check collisions
-		if (isAlien(xShot, yShot)) {
-			// The shot hit an alien
-			liveAliens--;
-			moveAliensPeriod -= moveAliensPeriodPer;
-			clearShot();
-		}
+	} while (playerLives > 0);
 
-		if (draw) {
-			printDisplay();
-		}
-	}
+	// TODO Game over
 }
 
 void newGame() {
@@ -154,11 +196,15 @@ void newGame() {
 	yGridOrigin = SCREEN_H - ((ALIEN_ROWS - 1) * ALIEN_PITCH_Y + ALIEN_H) - SPACESHIP_H;
 
 	// Clear the field
-	memset(field, '\0', SCREEN_W * SCREEN_H);
+	memset(field, F_EMPTY, SCREEN_W * SCREEN_H);
 
 	// Reset the player
+	playerLives = 3;
 	xPlayer = SCREEN_W / 2;
 	clearShot();
+
+	// Reset timing
+	moveAliensPeriodPer = 80;
 
 	// Draw the aliens
 	for (uint8_t i = 0; i < ALIEN_COLS; i++) {
@@ -173,46 +219,65 @@ void newGame() {
 	}
 }
 
+/******************************************************************************
+ * Player Shot
+ ******************************************************************************/
+
 void shoot() {
 	xShot = xPlayer;
 	yShot = PLAYER_H;
 }
 
 void clearShot() {
-	xShot = SCREEN_W;
-	yShot = PLAYER_H;
+	yShot = SCREEN_H;
 }
 
 bool isShotActive() {
-	return xShot < SCREEN_W;
+	return yShot < SCREEN_H;
+}
+
+bool isShotReady() {
+	return yShot >= SCREEN_H / 2;
 }
 
 bool moveShotUp() {
 	yShot++;
 }
 
-bool tryShiftAliensLeft() {
+/******************************************************************************
+ * Aliens
+ ******************************************************************************/
+
+void removeAlien(uint8_t xField, uint8_t yField) {
+	// Get the symbol that represents this alien
+	char c = field[xField][yField];
+
+	// TODO Reduce loop bounds to alien size
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
-		if (isAlien(SCREEN_W - 1, y)) {
-			return false;
+		for (uint8_t x = 0; x < SCREEN_W; x++) {
+			if (field[x][y] == c) field[x][y] = F_EMPTY;
 		}
+	}
+}
+
+bool tryMoveAliensLeft() {
+	for (uint8_t y = 0; y < SCREEN_H; y++) {
+		if (isAlien(SCREEN_W - 1, y)) return false;
 	}
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
 		for (uint8_t x = SCREEN_W - 2; x < SCREEN_W; x--) {
 			if (isAlien(x, y)) {
 				field[x + 1][y] = field[x][y];
-				field[x][y] = '\0';
+				field[x][y] = F_EMPTY;
 			}
 		}
 	}
 	return true;
 }
 
-bool tryShiftAliensRight() {
+bool tryMoveAliensRight() {
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
-		if (isAlien(0, y)) {
-			return false;
-		}
+		if (isAlien(0, y)) return false;
 	}
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
 		for (uint8_t x = 1; x < SCREEN_W; x++) {
@@ -225,7 +290,10 @@ bool tryShiftAliensRight() {
 	return true;
 }
 
-void moveAliensDown() {
+bool tryMoveAliensDown() {
+	for (uint8_t x = 1; x < SCREEN_W; x++) {
+		if (isAlien(x, 0)) return false;
+	}
 	for (uint8_t y = 0; y < SCREEN_H - 1; y++) {
 		for (uint8_t x = 0; x < SCREEN_W; x++) {
 			if (isAlien(x, y)) {
@@ -234,6 +302,7 @@ void moveAliensDown() {
 			}
 		}
 	}
+	return true;
 }
 
 bool tryMovePlayerLeft() {
@@ -252,15 +321,33 @@ bool tryMovePlayerRight() {
 	return false;
 }
 
-bool isSpaceship(uint8_t x, uint8_t y) {
-	return field[x][y] == F_SPACSHIP;
-}
+/******************************************************************************
+ * Identify Objects on the Field
+ ******************************************************************************/
 
 bool isAlien(uint8_t x, uint8_t y) {
 	return x < SCREEN_W && y < SCREEN_H &&
 		(uint8_t)(field[x][y] - F_ALIEN_0) < TOTAL_ALIENS;
 }
 
+// This function defines the shape of the player:
+// P = player origin, @ = part of player ship
+// 
+//   @
+// @ P @
 bool isPlayer(uint8_t x, uint8_t y) {
-	return field[x][y] == F_PLAYER;
+	return abs(x - xPlayer) <= PLAYER_W2 && y == 0 ||
+		x == xPlayer && y < PLAYER_H;
+}
+
+bool isSpaceship(uint8_t x, uint8_t y) {
+	return field[x][y] == F_SPACESHIP;
+}
+
+/******************************************************************************
+ * Animations
+ ******************************************************************************/
+
+void animatePlayerExplode() {
+	
 }
