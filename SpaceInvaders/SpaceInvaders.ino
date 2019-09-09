@@ -6,6 +6,8 @@
 
 #include <Max72xxPanelBleh.h>
 
+//#define PRINT_DISPLAY
+
 const uint8_t
 SCREEN_W = 16,
 SCREEN_H = 16,
@@ -23,6 +25,12 @@ ALIEN_PITCH_X = 3,	// Horizontal distance from one alien to the next on the fiel
 ALIEN_PITCH_Y = 3,	// Vertical distance from one alien to the next on the field
 TOTAL_ALIENS = ALIEN_ROWS * ALIEN_COLS;
 
+// Drawing options
+const uint8_t
+DRAW_PLAYER_NORMAL = 1,
+DRAW_PLAYER_INVISIBLE = 0,
+DRAW_PLAYER_EMPTY = 2;
+
 // The position of the lower-right alien on the field.
 uint8_t xGridOrigin, yGridOrigin;
 
@@ -38,6 +46,7 @@ char field[SCREEN_W][SCREEN_H];
 
 // Alien movement
 uint32_t moveAliensPeriodPer;
+bool moveLeft, moveDown;
 
 // Field symbols
 const char
@@ -72,9 +81,6 @@ F_ALIEN_0 = 'A';
 //  0  . . . . @ @ @ . . . . . . . . .
 // 
 
-bool moveLeft = false;
-bool moveDown = false;
-
 void setup() {
 	Serial.begin(115200);
 	while (!Serial);
@@ -86,11 +92,54 @@ void setup() {
 
 void loop() {
 
-	do {
-		newGame();
+	newGame();
+	playGame();
 
-		printDisplay();
+}
+
+void newGame() {
+	// Reset the player
+	playerLives = 3;
+	xPlayer = SCREEN_W / 2;
+
+	// Reset timing
+	moveAliensPeriodPer = 75;
+}
+
+void newRound() {
+	// Clear the field
+	memset(field, F_EMPTY, SCREEN_W * SCREEN_H);
+	clearShot();
+
+	// Reset the aliens
+	// Start with the grid of aliens touching the left side of the screen...
+	xGridOrigin = SCREEN_W - ((ALIEN_COLS - 1) * ALIEN_PITCH_X + ALIEN_W);
+	// ..and as close as possible to the top of the screen, leaving space for spaceships.
+	yGridOrigin = SCREEN_H - ((ALIEN_ROWS - 1) * ALIEN_PITCH_Y + ALIEN_H) - SPACESHIP_H;
+	moveDown = false;
+	moveLeft = false;
+
+	// Draw the aliens
+	for (uint8_t i = 0; i < ALIEN_COLS; i++) {
+		for (uint8_t j = 0; j < ALIEN_ROWS; j++) {
+			uint8_t x = xGridOrigin + i * ALIEN_PITCH_X,
+				y = yGridOrigin + j * ALIEN_PITCH_Y;
+			char c = F_ALIEN_0 + i + j * ALIEN_COLS;
+			field[x][y] = c;
+			field[x][y + 1] = c;
+			field[x + 1][y + 1] = c;
+		}
+	}
+}
+
+void playGame() {
+	do {
+		newRound();
+
 		drawDisplay();
+#ifdef PRINT_DISPLAY
+		printDisplay();
+#endif
 
 		uint32_t moveAliensPeriod = TOTAL_ALIENS * moveAliensPeriodPer,
 			moveAliensTime = millis() + moveAliensPeriod;
@@ -103,8 +152,8 @@ void loop() {
 			roundLose = false;
 
 		do {
-			// TODO
-			//newRound();
+			Serial.print("moveAliensPeriodPer = ");
+			Serial.println(moveAliensPeriodPer);
 
 			bool draw = false;
 
@@ -167,8 +216,10 @@ void loop() {
 			}
 
 			if (draw) {
-				printDisplay();
 				drawDisplay();
+#ifdef PRINT_DISPLAY
+				printDisplay();
+#endif
 			}
 
 		} while (!roundWin && !roundLose);
@@ -181,42 +232,15 @@ void loop() {
 
 			// Lose a life
 			playerLives--;
+			animatePlayerExplode();
 		}
+
+		// Round end delay
+		delay(1000);
 
 	} while (playerLives > 0);
 
 	// TODO Game over
-}
-
-void newGame() {
-	// Reset the aliens
-	// Start with the grid of aliens touching the left side of the field...
-	xGridOrigin = SCREEN_W - ((ALIEN_COLS - 1) * ALIEN_PITCH_X + ALIEN_W);
-	// ..and as close as possible to the top of the screen, leaving space for spaceships.
-	yGridOrigin = SCREEN_H - ((ALIEN_ROWS - 1) * ALIEN_PITCH_Y + ALIEN_H) - SPACESHIP_H;
-
-	// Clear the field
-	memset(field, F_EMPTY, SCREEN_W * SCREEN_H);
-
-	// Reset the player
-	playerLives = 3;
-	xPlayer = SCREEN_W / 2;
-	clearShot();
-
-	// Reset timing
-	moveAliensPeriodPer = 80;
-
-	// Draw the aliens
-	for (uint8_t i = 0; i < ALIEN_COLS; i++) {
-		for (uint8_t j = 0; j < ALIEN_ROWS; j++) {
-			uint8_t x = xGridOrigin + i * ALIEN_PITCH_X,
-				y = yGridOrigin + j * ALIEN_PITCH_Y;
-			char c = F_ALIEN_0 + i + j * ALIEN_COLS;
-			field[x][y] = c;
-			field[x][y + 1] = c;
-			field[x + 1][y + 1] = c;
-		}
-	}
 }
 
 /******************************************************************************
@@ -349,5 +373,10 @@ bool isSpaceship(uint8_t x, uint8_t y) {
  ******************************************************************************/
 
 void animatePlayerExplode() {
-	
+	const uint16_t BLINK_DELAY = 166;
+	for (uint8_t i = 0; i < 6; i++) {
+		drawDisplay((i & 0x01) ? DRAW_PLAYER_NORMAL : DRAW_PLAYER_EMPTY);
+		delay(BLINK_DELAY);
+	}
+	drawDisplay(DRAW_PLAYER_INVISIBLE);
 }
