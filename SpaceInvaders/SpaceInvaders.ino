@@ -33,6 +33,8 @@ DRAW_PLAYER_EMPTY = 2;
 
 // The position of the lower-right alien on the field.
 uint8_t xGridOrigin, yGridOrigin;
+// One bit per alien, indicating alive or dead.
+uint32_t liveAliens;
 
 // Player
 uint8_t playerLives = 3;
