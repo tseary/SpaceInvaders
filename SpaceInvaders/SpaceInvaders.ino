@@ -51,6 +51,13 @@ uint32_t moveAliensPeriodPer;
 bool moveLeft, moveDown;
 bool oddFrame;
 
+// Timing
+const uint32_t
+MOVE_ALIENS_PERIOS_PER_INITIAL = 66,
+MOVE_SHOT_PERIOD = 200;
+const float
+SPEED_INCREASE_PER_LEVEL = 0.8;
+
 // The field is the size of the screen and has one char per pixel.
 // The char identifies what is on-screen.
 // 
@@ -96,7 +103,7 @@ void newGame() {
 	xPlayer = SCREEN_W / 2;
 
 	// Reset timing
-	moveAliensPeriodPer = 75;
+	moveAliensPeriodPer = MOVE_ALIENS_PERIOS_PER_INITIAL;
 }
 
 void newRound() {
@@ -126,8 +133,7 @@ void playGame() {
 
 		uint32_t moveAliensPeriod = TOTAL_ALIENS * moveAliensPeriodPer,
 			moveAliensTime = millis() + moveAliensPeriod;
-		uint32_t moveShotPeriod = 200,
-			moveShotTime;
+		uint32_t moveShotTime;
 
 		bool roundWin = false,
 			roundLose = false;
@@ -151,14 +157,14 @@ void playGame() {
 			}
 			if (isDClick() && isShotReady()) {
 				shoot();
-				moveShotTime = millis() + moveShotPeriod;
+				moveShotTime = millis() + MOVE_SHOT_PERIOD;
 				draw = true;
 			}
 
 			// Move player shot
 			if (isShotActive() && millis() >= moveShotTime) {
 				moveShotUp();
-				moveShotTime += moveShotPeriod;
+				moveShotTime += MOVE_SHOT_PERIOD;
 				draw = true;
 			}
 
@@ -208,7 +214,7 @@ void playGame() {
 
 		// Speed up after each round
 		if (roundWin) {
-			moveAliensPeriodPer *= 0.8;
+			moveAliensPeriodPer *= SPEED_INCREASE_PER_LEVEL;
 		} else if (roundLose) {
 			// TODO Reset the aliens position, but don't replace the ones already killed
 
@@ -333,22 +339,13 @@ uint8_t getAlienAt(uint8_t x, uint8_t y) {
 	if (!(xFrame < ALIEN_W && yFrame < ALIEN_H)) return ALIEN_NONE;
 
 	// Get the shape
-	uint8_t alienType = yOnGrid;
-	uint8_t alienShape = ALIEN_SHAPES[alienType];
+	uint8_t alienShape = ALIEN_SHAPES[yOnGrid][oddFrame ? 1 : 0];
 
 	// Get the pixel within the shape
-	alienShape >>= BITS_PER_ROW * yFrame;
-	alienShape >>= BITS_PER_PIXEL * xFrame;
-	uint8_t pixel = alienShape & P_MASK;
-
-	// Compare to the current animation frame
-	bool itsAnAlien =
-		(pixel == P_WHT) ||
-		(pixel == P_EVN && !oddFrame) ||
-		(pixel == P_ODD && oddFrame);
+	uint8_t pixelIndex = xFrame + ALIEN_W * yFrame;
 
 	// Return the index or none
-	return itsAnAlien ? alienIndex : ALIEN_NONE;
+	return (alienShape & (1 << pixelIndex)) ? alienIndex : ALIEN_NONE;
 }
 
 bool isAlienAlive(uint8_t alienIndex) {

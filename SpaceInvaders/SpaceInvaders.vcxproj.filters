@@ -18,6 +18,7 @@
     <None Include="SpaceInvaders.ino" />
     <None Include="Display.ino" />
     <None Include="Control.ino" />
+    <None Include="Aliens.h" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="__vm\.SpaceInvaders.vsarduino.h">
