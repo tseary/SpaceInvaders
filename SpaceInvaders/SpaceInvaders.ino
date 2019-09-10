@@ -5,6 +5,7 @@
 */
 
 #include <Max72xxPanelBleh.h>
+#include "Aliens.h"
 
 //#define PRINT_DISPLAY
 
@@ -13,6 +14,7 @@ SCREEN_W = 16,
 SCREEN_H = 16,
 PLAYER_W2 = 1,
 PLAYER_H = 2,
+SPACESHIP_W = 3,
 SPACESHIP_H = 1,
 SHIP_OFFSET = SCREEN_H - SPACESHIP_H;
 
@@ -44,21 +46,10 @@ uint8_t xPlayer;
 // The position of the (one and only) bullet
 uint8_t xShot, yShot;
 
-char field[SCREEN_W][SCREEN_H];
-
 // Alien movement
 uint32_t moveAliensPeriodPer;
 bool moveLeft, moveDown;
-
-// Field symbols
-const char
-F_EMPTY = '\0',
-F_PLAYER = '@',
-F_PLAYER_BULLET = '^',
-F_ALIEN_BULLET = 'v',
-F_SPACESHIP = '$',
-F_SHIELD = '#',
-F_ALIEN_0 = 'A';
+bool oddFrame;
 
 // The field is the size of the screen and has one char per pixel.
 // The char identifies what is on-screen.
@@ -109,11 +100,11 @@ void newGame() {
 }
 
 void newRound() {
-	// Clear the field
-	memset(field, F_EMPTY, SCREEN_W * SCREEN_H);
+	// Clear the shot
 	clearShot();
 
 	// Reset the aliens
+	liveAliens = ~(0xffffffff << TOTAL_ALIENS);
 	// Start with the grid of aliens touching the left side of the screen...
 	xGridOrigin = SCREEN_W - ((ALIEN_COLS - 1) * ALIEN_PITCH_X + ALIEN_W);
 	// ..and as close as possible to the top of the screen, leaving space for spaceships.
@@ -121,17 +112,7 @@ void newRound() {
 	moveDown = false;
 	moveLeft = false;
 
-	// Draw the aliens
-	for (uint8_t i = 0; i < ALIEN_COLS; i++) {
-		for (uint8_t j = 0; j < ALIEN_ROWS; j++) {
-			uint8_t x = xGridOrigin + i * ALIEN_PITCH_X,
-				y = yGridOrigin + j * ALIEN_PITCH_Y;
-			char c = F_ALIEN_0 + i + j * ALIEN_COLS;
-			field[x][y] = c;
-			field[x][y + 1] = c;
-			field[x + 1][y + 1] = c;
-		}
-	}
+	oddFrame = false;
 }
 
 void playGame() {
@@ -147,8 +128,6 @@ void playGame() {
 			moveAliensTime = millis() + moveAliensPeriod;
 		uint32_t moveShotPeriod = 200,
 			moveShotTime;
-
-		uint8_t liveAliens = TOTAL_ALIENS;
 
 		bool roundWin = false,
 			roundLose = false;
@@ -195,6 +174,8 @@ void playGame() {
 					moveLeft = !moveLeft;
 				}
 
+				oddFrame = !oddFrame;
+
 				moveAliensTime += moveAliensPeriod;
 				draw = true;
 			}
@@ -202,9 +183,8 @@ void playGame() {
 			// Check collisions
 			if (isAlien(xShot, yShot)) {
 				// The shot hit an alien
-				removeAlien(xShot, yShot);
+				killAlien(getAlienAt(xShot, yShot));
 
-				liveAliens--;
 				moveAliensPeriod -= moveAliensPeriodPer;
 				clearShot();
 
@@ -274,30 +254,11 @@ bool moveShotUp() {
  * Aliens
  ******************************************************************************/
 
-void removeAlien(uint8_t xField, uint8_t yField) {
-	// Get the symbol that represents this alien
-	char c = field[xField][yField];
-
-	// TODO Reduce loop bounds to alien size
-	for (uint8_t y = 0; y < SCREEN_H; y++) {
-		for (uint8_t x = 0; x < SCREEN_W; x++) {
-			if (field[x][y] == c) field[x][y] = F_EMPTY;
-		}
-	}
-}
-
 bool tryMoveAliensLeft() {
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
 		if (isAlien(SCREEN_W - 1, y)) return false;
 	}
-	for (uint8_t y = 0; y < SCREEN_H; y++) {
-		for (uint8_t x = SCREEN_W - 2; x < SCREEN_W; x--) {
-			if (isAlien(x, y)) {
-				field[x + 1][y] = field[x][y];
-				field[x][y] = F_EMPTY;
-			}
-		}
-	}
+	xGridOrigin++;
 	return true;
 }
 
@@ -305,14 +266,7 @@ bool tryMoveAliensRight() {
 	for (uint8_t y = 0; y < SCREEN_H; y++) {
 		if (isAlien(0, y)) return false;
 	}
-	for (uint8_t y = 0; y < SCREEN_H; y++) {
-		for (uint8_t x = 1; x < SCREEN_W; x++) {
-			if (isAlien(x, y)) {
-				field[x - 1][y] = field[x][y];
-				field[x][y] = '\0';
-			}
-		}
-	}
+	xGridOrigin--;
 	return true;
 }
 
@@ -320,14 +274,7 @@ bool tryMoveAliensDown() {
 	for (uint8_t x = 1; x < SCREEN_W; x++) {
 		if (isAlien(x, 0)) return false;
 	}
-	for (uint8_t y = 0; y < SCREEN_H - 1; y++) {
-		for (uint8_t x = 0; x < SCREEN_W; x++) {
-			if (isAlien(x, y)) {
-				if (y > 0) field[x][y - 1] = field[x][y];
-				field[x][y] = '\0';
-			}
-		}
-	}
+	yGridOrigin--;
 	return true;
 }
 
@@ -352,8 +299,64 @@ bool tryMovePlayerRight() {
  ******************************************************************************/
 
 bool isAlien(uint8_t x, uint8_t y) {
-	return x < SCREEN_W && y < SCREEN_H &&
-		(uint8_t)(field[x][y] - F_ALIEN_0) < TOTAL_ALIENS;
+	return getAlienAt(x, y) != ALIEN_NONE;
+}
+
+// TODO Optimize with bitwise operations instead of multiplication/division
+uint8_t getAlienAt(uint8_t x, uint8_t y) {
+	// Return if point is off the field
+	if (!(x < SCREEN_W && y < SCREEN_H)) return ALIEN_NONE;
+
+	// TODO return ALIEN_NONE if not an alien (or dead)
+
+	// Pixel coordinates, referenced to the grid origin
+	uint8_t xOnFieldGrid = x - xGridOrigin;
+	uint8_t yOnFieldGrid = y - yGridOrigin;
+	// Grid coordinates
+	uint8_t xOnGrid = xOnFieldGrid / ALIEN_PITCH_X;
+	uint8_t yOnGrid = yOnFieldGrid / ALIEN_PITCH_Y;
+
+	// Return if point is outside the grid
+	if (!(xOnGrid < ALIEN_COLS && yOnGrid < ALIEN_ROWS)) return ALIEN_NONE;
+
+	// Get the index
+	uint8_t alienIndex = xOnGrid + yOnGrid * ALIEN_COLS;
+
+	// Return if this alien is dead
+	if (!isAlienAlive(alienIndex)) return ALIEN_NONE;
+
+	// Now do bitmap comparison
+	uint8_t xFrame = xOnFieldGrid % ALIEN_PITCH_X;
+	uint8_t yFrame = yOnFieldGrid % ALIEN_PITCH_Y;
+
+	// Return if the pixel is out of bounds
+	if (!(xFrame < ALIEN_W && yFrame < ALIEN_H)) return ALIEN_NONE;
+
+	// Get the shape
+	uint8_t alienType = yOnGrid;
+	uint8_t alienShape = ALIEN_SHAPES[alienType];
+
+	// Get the pixel within the shape
+	alienShape >>= BITS_PER_ROW * yFrame;
+	alienShape >>= BITS_PER_PIXEL * xFrame;
+	uint8_t pixel = alienShape & P_MASK;
+
+	// Compare to the current animation frame
+	bool itsAnAlien =
+		(pixel == P_WHT) ||
+		(pixel == P_EVN && !oddFrame) ||
+		(pixel == P_ODD && oddFrame);
+
+	// Return the index or none
+	return itsAnAlien ? alienIndex : ALIEN_NONE;
+}
+
+bool isAlienAlive(uint8_t alienIndex) {
+	return liveAliens & ((uint32_t)1 << alienIndex);
+}
+
+void killAlien(uint8_t alienIndex) {
+	liveAliens &= ~((uint32_t)1 << alienIndex);
 }
 
 // This function defines the shape of the player:
@@ -367,7 +370,8 @@ bool isPlayer(uint8_t x, uint8_t y) {
 }
 
 bool isSpaceship(uint8_t x, uint8_t y) {
-	return field[x][y] == F_SPACESHIP;
+	if (y < SCREEN_H - SPACESHIP_H) return false;
+	return false;	// TODO
 }
 
 /******************************************************************************

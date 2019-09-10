@@ -1,24 +1,23 @@
 ﻿
-const uint8_t ALIEN_COUNT = 3;
-
-const uint8_t
-ALIEN_A = 0,
-ALIEN_B = 1,
-ALIEN_C = 2;
+const uint8_t ALIEN_TYPES = 3;
 
 const uint8_t ALIEN_NONE = 255;
-
-const uint8_t TETRAMINO_SIZE = 4;
-const uint16_t TETRAMINO_MASK = 0x000f;
 
 // Geometry data for each alien shape
 // Lower right is origin
 // Every pair of bits indicates the colour/animation:
-// 0b00 = black
-// 0b01 = white for odd frames
-// 0b10 = white for even frames
-// 0b11 = white
-const uint8_t ALIEN_SHAPES[ALIEN_COUNT] = {
+const uint8_t
+P_BLK = 0b00,
+P_ODD = 0b01,
+P_EVN = 0b10,
+P_WHT = 0b11;
+
+const uint8_t
+BITS_PER_PIXEL = 2,
+BITS_PER_ROW = 2 * BITS_PER_PIXEL,
+P_MASK = ~(0xff << BITS_PER_PIXEL);
+
+const uint8_t ALIEN_SHAPES[ALIEN_TYPES] = {
 	// C	[][]  [][]
 	//		  []  []
 	0b11110110,
@@ -31,5 +30,3 @@ const uint8_t ALIEN_SHAPES[ALIEN_COUNT] = {
 	//		[]      []
 	0b11111001
 };
-
-const uint8_t ALIEN_NONE = 255;
